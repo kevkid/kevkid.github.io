@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>WebXR Simple Shooter (Single File)</title>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* Prevent scrollbars */
+            background-color: #111; /* Dark background */
+        }
+
+        canvas {
+            display: block; /* Remove potential space below canvas */
+            width: 100%;
+            height: 100%;
+        }
+
+        #info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-family: sans-serif;
+            z-index: 1; /* Ensure it's above the canvas */
+        }
+    </style>
+
+    <!-- Import Map for Three.js modules from CDN -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+</head>
+<body>
+    <!-- Canvas and VR Button will be added by JavaScript -->
+
+    <script type="module">
+        // ==========================================
+        // == JavaScript Starts (was main.js) =======
+        // ==========================================
+        import * as THREE from 'three';
+        import { VRButton } from 'three/addons/webxr/VRButton.js';
+        // Optional: If you want controller models uncomment the next line and related code below
+        // import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+
+        let scene, camera, renderer, controls;
+        let controller1, controller2; // Controllers
+        let controllerGrip1, controllerGrip2; // Controller grip spaces for attaching objects
+        let raycaster;
+
+        let currentGunIndex = 0;
+        const guns = [
+            { name: 'Pistol', color: 0xff0000, size: { x: 0.05, y: 0.05, z: 0.15 } }, // Red
+            { name: 'Shotgun', color: 0x00ff00, size: { x: 0.06, y: 0.06, z: 0.3 } }, // Green
+            { name: 'Rifle', color: 0x0000ff, size: { x: 0.04, y: 0.04, z: 0.4 } }  // Blue
+        ];
+        let gunMesh = null; // The visual representation of the gun
+
+        const targets = []; // Array to hold target objects
+        const MAX_TARGETS = 15;
+        const TARGET_AREA_RADIUS = 5; // How far out targets can spawn
+        const TARGET_AREA_HEIGHT = 3;  // How high targets can spawn
+
+        // --- Initialization ---
+        function init() {
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB); // Sky blue background
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1.6, 2); // Position typical for seated/standing VR
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.xr.enabled = true; // Enable WebXR
+            document.body.appendChild(renderer.domElement);
+
+            // VR Button
+            document.body.appendChild(VRButton.createButton(renderer));
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 10, 7.5);
+            scene.add(directionalLight);
+
+            // Floor
+            const floorGeometry = new THREE.PlaneGeometry(20, 20);
+            const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x808080, side: THREE.DoubleSide }); // Grey floor
+            const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+            floor.rotation.x = -Math.PI / 2; // Rotate to be horizontal
+            floor.position.y = 0;
+            scene.add(floor);
+
+            // Raycaster for shooting
+            raycaster = new THREE.Raycaster();
+
+            // --- Controllers ---
+            function onSelectStart(event) {
+                // Trigger pulled
+                const controller = event.target; // Get the controller that fired the event
+                shoot(controller);
+            }
+
+            function onSqueezeStart(event) {
+                // Grip button pressed - Cycle guns (only using one controller for this for simplicity)
+                if (event.target === controller1) { // Let's use controller1 (often right hand)
+                     cycleGun(controller1);
+                }
+                 // Optionally allow switching with left too:
+                 // else if (event.target === controller2) {
+                 //     cycleGun(controller2); // This would equip the gun on the left hand though
+                 // }
+            }
+
+            // Controller 1 (often Right Hand)
+            controller1 = renderer.xr.getController(0);
+            controller1.addEventListener('selectstart', onSelectStart);
+            controller1.addEventListener('squeezestart', onSqueezeStart);
+            scene.add(controller1);
+
+            // --- Optional: Controller Models ---
+            // Uncomment this section and the import at the top if you want default controller visuals
+            /*
+            const controllerModelFactory = new XRControllerModelFactory();
+
+            // Controller Grip 1
+            controllerGrip1 = renderer.xr.getControllerGrip(0);
+            controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
+            scene.add(controllerGrip1);
+            // Attach gun to grip instead if using models:
+            // updateGunModel(controllerGrip1); // Initial gun setup on controller grip 1
+
+            // Controller Grip 2
+            controllerGrip2 = renderer.xr.getControllerGrip(1);
+            controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
+            scene.add(controllerGrip2);
+            */
+            // --- End Optional Controller Models ---
+
+
+            // Controller 2 (often Left Hand)
+            controller2 = renderer.xr.getController(1);
+            controller2.addEventListener('selectstart', onSelectStart);
+            // controller2.addEventListener('squeezestart', onSqueezeStart); // Optionally allow switching with left too
+            scene.add(controller2);
+
+
+            // Initial gun setup on controller 1 (or grip 1 if using models)
+            // If using controller models, comment the line below and uncomment the one in the 'Optional Controller Models' section
+            updateGunModel(controller1);
+
+
+            // --- Targets ---
+            spawnTargets();
+
+            // --- Event Listeners ---
+            window.addEventListener('resize', onWindowResize, false);
+
+            // Start Animation Loop
+            renderer.setAnimationLoop(render);
+        }
+
+        // --- Gun Logic ---
+        function cycleGun(controllerOrGrip) { // Accepts the object to attach the gun to
+            currentGunIndex = (currentGunIndex + 1) % guns.length;
+            console.log("Switched to:", guns[currentGunIndex].name);
+            updateGunModel(controllerOrGrip); // Update visual on the controller/grip that squeezed
+        }
+
+        function updateGunModel(parentObject) { // Renamed parameter for clarity
+            if (gunMesh) {
+                // Remove previous gun mesh if it exists and is attached
+                if(gunMesh.parent) {
+                    gunMesh.parent.remove(gunMesh);
+                }
+                 // Important: Dispose of geometry and material to free memory
+                gunMesh.geometry.dispose();
+                gunMesh.material.dispose();
+                gunMesh = null; // Ensure it's garbage collected
+            }
+
+            const gunData = guns[currentGunIndex];
+            const gunGeometry = new THREE.BoxGeometry(gunData.size.x, gunData.size.y, gunData.size.z);
+            const gunMaterial = new THREE.MeshStandardMaterial({ color: gunData.color });
+            gunMesh = new THREE.Mesh(gunGeometry, gunMaterial);
+
+            // Position the gun relative to the controller/grip
+            // Adjust these values to make it look right in your hand
+            gunMesh.position.set(0, -0.02, -0.15); // Slightly below and forward from controller center
+            gunMesh.rotation.set(0, 0, 0); // Adjust if needed
+
+            // Attach the gun mesh to the controller or grip space
+            parentObject.add(gunMesh);
+        }
+
+
+        // --- Shooting Logic ---
+        function shoot(controller) {
+             // Determine the object holding the gun (controller or grip)
+            const gunHolder = controllerGrip1 && controller === controller1 ? controllerGrip1 : controller; // Use grip if available for controller 1
+
+             // Only shoot if a gun is visually attached to the correct controller/grip
+            if (!gunMesh || !gunMesh.parent || gunMesh.parent !== gunHolder) return;
+
+            const tempMatrix = new THREE.Matrix4();
+            // Get the controller's world matrix (aiming direction)
+            tempMatrix.identity().extractRotation(controller.matrixWorld);
+
+            // Set raycaster origin to controller's world position
+            raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+            // Set raycaster direction to the controller's forward direction (negative Z)
+            raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix).normalize();
+
+            const intersects = raycaster.intersectObjects(targets);
+
+            if (intersects.length > 0) {
+                const intersectedTarget = intersects[0].object;
+                console.log("Hit!");
+
+                // --- Hit Effect ---
+                // Simple: remove target
+                scene.remove(intersectedTarget);
+                // Remove from our tracking array
+                const index = targets.indexOf(intersectedTarget);
+                if (index > -1) {
+                    targets.splice(index, 1);
+                }
+                // Dispose geometry/material of the hit target
+                if (intersectedTarget.geometry) intersectedTarget.geometry.dispose();
+                if (intersectedTarget.material) intersectedTarget.material.dispose();
+
+
+                // Optional: Respawn a new target after a delay
+                setTimeout(spawnSingleTarget, 1000); // Respawn after 1 second
+            } else {
+                console.log("Miss!");
+            }
+
+            // Optional: Visual feedback for the shot (e.g., a quick line)
+            const beamMaterial = new THREE.LineBasicMaterial({ color: 0xffa500, linewidth: 2 }); // Orange beam
+            const beamPoints = [];
+            const startPoint = new THREE.Vector3();
+            const endPoint = new THREE.Vector3();
+
+            // Use the gun holder's position if available (more accurate visually), else controller
+            const shootOriginPosition = new THREE.Vector3();
+            gunHolder.getWorldPosition(shootOriginPosition);
+
+            startPoint.copy(shootOriginPosition); // Start from gun model's parent world position
+
+            // Extend the beam forward using the raycaster direction
+            endPoint.copy(raycaster.ray.origin).add(raycaster.ray.direction.multiplyScalar(50)); // Beam goes 50 units
+
+            beamPoints.push(startPoint);
+            beamPoints.push(endPoint);
+
+            const beamGeometry = new THREE.BufferGeometry().setFromPoints(beamPoints);
+            const beamLine = new THREE.Line(beamGeometry, beamMaterial);
+            scene.add(beamLine);
+
+            // Remove the beam after a short duration
+            setTimeout(() => {
+                scene.remove(beamLine);
+                if (beamLine.geometry) beamLine.geometry.dispose(); // Clean up geometry
+                if (beamLine.material) beamLine.material.dispose(); // Clean up material
+            }, 100); // Beam visible for 100ms
+        }
+
+
+        // --- Target Logic ---
+        function createTarget() {
+            const targetGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.1); // Flat-ish boxes
+            const targetMaterial = new THREE.MeshStandardMaterial({ color: 0xffff00 }); // Yellow targets
+            const target = new THREE.Mesh(targetGeometry, targetMaterial);
+            return target;
+        }
+
+        function spawnSingleTarget() {
+             if (targets.length >= MAX_TARGETS) return; // Don't spawn too many
+
+            const target = createTarget();
+
+            // Random position within a cylindrical area in front of the player
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 2 + Math.random() * (TARGET_AREA_RADIUS - 2); // Spawn between 2 and TARGET_AREA_RADIUS units away
+            const x = Math.cos(angle) * radius;
+            const z = Math.sin(angle) * radius;
+            // Make sure z is negative (in front of default camera position)
+            const finalZ = -Math.abs(z);
+
+            // Random height, ensuring it's not below the floor
+            const y = 0.5 + Math.random() * (TARGET_AREA_HEIGHT - 0.5);
+
+            target.position.set(x, y, finalZ);
+            target.lookAt(camera.position); // Make target face the player (optional)
+
+            scene.add(target);
+            targets.push(target);
+        }
+
+        function spawnTargets() {
+            // Clear existing targets if any
+            targets.forEach(target => {
+                 scene.remove(target);
+                 // Dispose geometry/material
+                 if (target.geometry) target.geometry.dispose();
+                 if (target.material) target.material.dispose();
+             });
+            targets.length = 0; // Clear the array
+
+            // Spawn initial targets
+            for (let i = 0; i < MAX_TARGETS; i++) {
+                spawnSingleTarget();
+            }
+        }
+
+        // --- Utilities ---
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- Render Loop ---
+        function render() {
+            // If using controller models, you might update them here if needed,
+            // but usually they update automatically via WebXR.
+
+            renderer.render(scene, camera);
+        }
+
+        // --- Start the Experience ---
+        init();
+
+        // ==========================================
+        // == JavaScript Ends =======================
+        // ==========================================
+    </script>
+
+</body>
+</html>
