@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pizza Maker Game</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f0f0f0;
+            flex-direction: column; /* Arrange items vertically */
+        }
+        #game-container {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        canvas {
+            border: 1px solid #ccc;
+            background-color: #f8f8f8; /* Light background for the canvas */
+            display: block; /* Remove extra space below canvas */
+            margin: 10px auto; /* Center canvas */
+        }
+        #controls {
+            margin-top: 15px;
+            display: flex;
+            flex-wrap: wrap; /* Allow buttons to wrap */
+            justify-content: center;
+            gap: 10px; /* Spacing between buttons */
+        }
+        button {
+            padding: 10px 15px;
+            font-size: 1em;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            background-color: #4CAF50; /* Green */
+            color: white;
+            transition: background-color 0.2s ease;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #status {
+            margin-top: 15px;
+            font-weight: bold;
+            color: #333;
+            min-height: 1.2em; /* Prevent layout shift */
+        }
+        .topping-btn { background-color: #ff9800; } /* Orange for toppings */
+        .topping-btn:hover:enabled { background-color: #fb8c00; }
+        .action-btn { background-color: #2196F3; } /* Blue for actions */
+        .action-btn:hover:enabled { background-color: #1e88e5; }
+        .reset-btn { background-color: #f44336; } /* Red for reset */
+        .reset-btn:hover:enabled { background-color: #d32f2f; }
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <h1>Pizza Maker</h1>
+    <canvas id="pizzaCanvas" width="400" height="400"></canvas>
+    <div id="status">Start by adding dough!</div>
+    <div id="controls">
+        <button id="addDoughBtn">Add Dough</button>
+        <button id="addSauceBtn" disabled>Add Sauce</button>
+        <button id="addCheeseBtn" disabled>Add Cheese</button>
+        <hr style="width: 100%; border: none; margin: 5px 0;"> <!-- Visual separator -->
+        <button id="addPepperoniBtn" class="topping-btn" disabled>Add Pepperoni</button>
+        <button id="addMushroomBtn" class="topping-btn" disabled>Add Mushrooms</button>
+        <button id="addOliveBtn" class="topping-btn" disabled>Add Olives</button>
+        <button id="addPeppersBtn" class="topping-btn" disabled>Add Green Peppers</button>
+        <hr style="width: 100%; border: none; margin: 5px 0;"> <!-- Visual separator -->
+        <button id="bakeBtn" class="action-btn" disabled>Bake Pizza</button>
+        <button id="resetBtn" class="reset-btn">New Pizza</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('pizzaCanvas');
+    const ctx = canvas.getContext('2d');
+    const statusDiv = document.getElementById('status');
+
+    // Buttons
+    const addDoughBtn = document.getElementById('addDoughBtn');
+    const addSauceBtn = document.getElementById('addSauceBtn');
+    const addCheeseBtn = document.getElementById('addCheeseBtn');
+    const addPepperoniBtn = document.getElementById('addPepperoniBtn');
+    const addMushroomBtn = document.getElementById('addMushroomBtn');
+    const addOliveBtn = document.getElementById('addOliveBtn');
+    const addPeppersBtn = document.getElementById('addPeppersBtn');
+    const bakeBtn = document.getElementById('bakeBtn');
+    const resetBtn = document.getElementById('resetBtn');
+
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const baseRadius = 150;
+
+    let pizzaState = {
+        hasDough: false,
+        hasSauce: false,
+        hasCheese: false,
+        toppings: [], // Stores { type: 'pepperoni', x: 100, y: 120 }
+        isBaked: false
+    };
+
+    // --- Drawing Functions ---
+
+    function drawDough() {
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, baseRadius, 0, Math.PI * 2);
+        ctx.fillStyle = '#EED8AE'; // Dough color
+        ctx.fill();
+        ctx.strokeStyle = '#D2B48C'; // Crust color
+        ctx.lineWidth = 10;
+        ctx.stroke();
+    }
+
+    function drawSauce() {
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, baseRadius - 15, 0, Math.PI * 2);
+        ctx.fillStyle = '#B22222'; // Tomato sauce color
+        ctx.fill();
+    }
+
+    function drawCheese() {
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, baseRadius - 25, 0, Math.PI * 2);
+        ctx.fillStyle = '#FFFACD'; // Cheese color
+        ctx.fill();
+    }
+
+    function drawPepperoni(x, y) {
+        ctx.beginPath();
+        ctx.arc(x, y, 15, 0, Math.PI * 2);
+        ctx.fillStyle = '#C83232'; // Pepperoni color
+        ctx.fill();
+        ctx.strokeStyle = '#A02828'; // Darker edge
+        ctx.lineWidth = 1;
+        ctx.stroke();
+    }
+
+    function drawMushroom(x, y) {
+        // Simple mushroom shape: stem + cap
+        ctx.fillStyle = '#D2B48C'; // Stem color
+        ctx.fillRect(x - 5, y, 10, 12); // Stem
+
+        ctx.fillStyle = '#A0522D'; // Cap color
+        ctx.beginPath();
+        ctx.arc(x, y, 12, Math.PI, 0); // Cap (half circle)
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    function drawOlive(x, y) {
+        // Black ring
+        ctx.beginPath();
+        ctx.arc(x, y, 10, 0, Math.PI * 2); // Outer ring
+        ctx.fillStyle = '#303030';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, Math.PI * 2); // Inner hole
+        ctx.fillStyle = '#FFFACD'; // Use cheese color for hole background
+         if (pizzaState.isBaked) {
+            ctx.fillStyle = '#E0D9B9'; // Baked cheese color
+        }
+        ctx.fill();
+    }
+
+     function drawGreenPepper(x, y) {
+        // Simple curved rectangle shape
+        ctx.beginPath();
+        ctx.moveTo(x - 15, y);
+        ctx.quadraticCurveTo(x, y - 10, x + 15, y); // Top curve
+        ctx.lineTo(x + 10, y + 8);
+        ctx.quadraticCurveTo(x, y + 12, x - 10, y + 8); // Bottom curve
+        ctx.closePath();
+        ctx.fillStyle = '#2E8B57'; // Green pepper color
+        ctx.fill();
+    }
+
+    function drawBakedEffect() {
+        // Add subtle brown specks for a "baked" look
+        ctx.fillStyle = 'rgba(139, 69, 19, 0.15)'; // Brown, semi-transparent
+        for (let i = 0; i < 150; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            // Place specks mostly on cheese/toppings area
+            const radius = (baseRadius - 25) * Math.sqrt(Math.random());
+            const x = centerX + radius * Math.cos(angle);
+            const y = centerY + radius * Math.sin(angle);
+            ctx.beginPath();
+            ctx.arc(x, y, Math.random() * 2 + 1, 0, Math.PI * 2); // Small random size specks
+            ctx.fill();
+        }
+         // Darken crust slightly
+        ctx.strokeStyle = '#B8860B'; // Darker baked crust color
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, baseRadius, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+
+    function redrawPizza() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+
+        if (pizzaState.hasDough) {
+            drawDough();
+        }
+        if (pizzaState.hasSauce) {
+            drawSauce();
+        }
+        if (pizzaState.hasCheese) {
+            drawCheese();
+        }
+
+        // Draw toppings stored in state
+        pizzaState.toppings.forEach(topping => {
+            switch(topping.type) {
+                case 'pepperoni': drawPepperoni(topping.x, topping.y); break;
+                case 'mushroom': drawMushroom(topping.x, topping.y); break;
+                case 'olive': drawOlive(topping.x, topping.y); break;
+                case 'pepper': drawGreenPepper(topping.x, topping.y); break;
+            }
+        });
+
+        if (pizzaState.isBaked) {
+            drawBakedEffect();
+        }
+    }
+
+    // --- Game Logic & Event Listeners ---
+
+    function updateButtonStates() {
+        addDoughBtn.disabled = pizzaState.hasDough || pizzaState.isBaked;
+        addSauceBtn.disabled = !pizzaState.hasDough || pizzaState.hasSauce || pizzaState.isBaked;
+        addCheeseBtn.disabled = !pizzaState.hasSauce || pizzaState.hasCheese || pizzaState.isBaked;
+
+        const canAddToppings = pizzaState.hasCheese && !pizzaState.isBaked;
+        addPepperoniBtn.disabled = !canAddToppings;
+        addMushroomBtn.disabled = !canAddToppings;
+        addOliveBtn.disabled = !canAddToppings;
+        addPeppersBtn.disabled = !canAddToppings;
+
+        bakeBtn.disabled = !pizzaState.hasCheese || pizzaState.isBaked; // Can bake once cheese is on
+    }
+
+    function updateStatus(message) {
+        statusDiv.textContent = message;
+    }
+
+    function getRandomToppingPosition() {
+        const maxRadius = baseRadius - 45; // Keep toppings away from the very edge of cheese
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.sqrt(Math.random()) * maxRadius; // sqrt for even distribution
+        const x = centerX + radius * Math.cos(angle);
+        const y = centerY + radius * Math.sin(angle);
+        return { x, y };
+    }
+
+    addDoughBtn.addEventListener('click', () => {
+        if (!pizzaState.hasDough) {
+            pizzaState.hasDough = true;
+            updateStatus('Added dough! Now add sauce.');
+            redrawPizza();
+            updateButtonStates();
+        }
+    });
+
+    addSauceBtn.addEventListener('click', () => {
+        if (pizzaState.hasDough && !pizzaState.hasSauce) {
+            pizzaState.hasSauce = true;
+            updateStatus('Added sauce! Time for cheese.');
+            redrawPizza();
+            updateButtonStates();
+        }
+    });
+
+    addCheeseBtn.addEventListener('click', () => {
+        if (pizzaState.hasSauce && !pizzaState.hasCheese) {
+            pizzaState.hasCheese = true;
+            updateStatus('Added cheese! Add some toppings.');
+            redrawPizza();
+            updateButtonStates();
+        }
+    });
+
+    function addTopping(type) {
+        if (pizzaState.hasCheese && !pizzaState.isBaked) {
+            const position = getRandomToppingPosition();
+            pizzaState.toppings.push({ type: type, x: position.x, y: position.y });
+            updateStatus(`Added ${type}!`);
+            redrawPizza();
+            updateButtonStates(); // Keep buttons enabled
+        }
+    }
+
+    addPepperoniBtn.addEventListener('click', () => addTopping('pepperoni'));
+    addMushroomBtn.addEventListener('click', () => addTopping('mushroom'));
+    addOliveBtn.addEventListener('click', () => addTopping('olive'));
+    addPeppersBtn.addEventListener('click', () => addTopping('pepper'));
+
+    bakeBtn.addEventListener('click', () => {
+        if (pizzaState.hasCheese && !pizzaState.isBaked) {
+            pizzaState.isBaked = true;
+            updateStatus('Pizza is baked! Yum!');
+            redrawPizza();
+            updateButtonStates(); // Disable most buttons after baking
+        }
+    });
+
+    resetBtn.addEventListener('click', () => {
+        pizzaState = {
+            hasDough: false,
+            hasSauce: false,
+            hasCheese: false,
+            toppings: [],
+            isBaked: false
+        };
+        updateStatus('Start by adding dough!');
+        redrawPizza(); // Clears the canvas
+        updateButtonStates();
+    });
+
+    // Initial setup
+    updateStatus('Start by adding dough!');
+    updateButtonStates();
+    // Maybe draw an empty plate initially?
+    ctx.fillStyle = '#E0E0E0'; // Light grey plate color
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, baseRadius + 20, 0, Math.PI * 2);
+    ctx.fill();
+
+
+</script>
+
+</body>
+</html>

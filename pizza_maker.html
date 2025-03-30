@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pizza Hell's Kitchen</title> <!-- Even more dramatic title -->
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center; /* Center the oven view */
+            min-height: 100vh;
+            background-color: #212121; /* Dark background */
+            padding-top: 0; /* Remove top padding */
+            user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none;
+            overflow: hidden; /* Prevent scrollbars from oven glow */
+        }
+
+        /* --- Oven Styling --- */
+        #oven-view {
+            width: 95%;
+            max-width: 1150px; /* Limit oven size */
+            padding: 40px 30px 60px 30px; /* Top/Bottom padding for oven effect */
+            background: linear-gradient(145deg, #3a3a3a, #4d4d4d); /* Dark metallic gradient */
+            border-radius: 25px;
+            border: 5px solid #2c2c2c;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(0, 0, 0, 0.4);
+            position: relative; /* For pseudo-elements */
+            overflow: hidden; /* Keep effects contained */
+        }
+
+        /* Heating Element Effect */
+        #oven-view::after {
+            content: '';
+            position: absolute;
+            bottom: 15px;
+            left: 5%;
+            right: 5%;
+            height: 10px;
+            background: linear-gradient(90deg, transparent, rgba(255, 100, 0, 0.5), rgba(255, 150, 0, 0.7), rgba(255, 100, 0, 0.5), transparent);
+            border-radius: 5px;
+            box-shadow: 0 0 15px 5px rgba(255, 120, 0, 0.4);
+            opacity: 0.7;
+            transition: all 0.5s ease-in-out;
+            z-index: 1; /* Below game content */
+        }
+
+        /* Active Oven State */
+        #oven-view.oven-active::after {
+            background: linear-gradient(90deg, transparent, rgba(255, 80, 0, 0.8), rgba(255, 130, 0, 1), rgba(255, 80, 0, 0.8), transparent);
+            box-shadow: 0 0 30px 10px rgba(255, 100, 0, 0.7);
+            opacity: 1;
+            animation: pulseGlow 1.5s infinite alternate ease-in-out;
+        }
+         /* Add subtle orange overlay during baking */
+         #oven-view.oven-active::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(255, 150, 50, 0.05); /* Very subtle orange tint */
+            border-radius: 20px; /* Match parent */
+            z-index: 0; /* Behind game content but above base background */
+            pointer-events: none; /* Allow clicks through */
+         }
+
+
+        @keyframes pulseGlow {
+            from { box-shadow: 0 0 25px 8px rgba(255, 100, 0, 0.6); }
+            to { box-shadow: 0 0 40px 12px rgba(255, 130, 0, 0.8); }
+        }
+
+
+        /* --- Game Content Styling (Inside Oven) --- */
+        #game-container {
+            background-color: rgba(74, 63, 94, 0.9); /* Slightly transparent */
+            padding: 20px 30px; border-radius: 15px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2); text-align: center;
+            display: flex; gap: 30px; align-items: flex-start;
+            max-width: 1050px; border: 1px solid #6a5f7e;
+            position: relative; /* Ensure it's above pseudo-elements */
+            z-index: 2;
+            color: #e0e0e0;
+        }
+        #pizza-area { flex-basis: 420px; }
+        #info-area {
+            flex-basis: 450px; background-color: rgba(90, 79, 110, 0.9);
+            padding: 15px; border-radius: 8px; border: 1px solid #7a6f8e;
+            display: flex; flex-direction: column; min-height: 520px;
+        }
+        canvas {
+            border: 1px solid #7a6f8e; background-color: #f8f8f8; display: block; margin: 10px auto; border-radius: 50%; box-shadow: inset 0 0 15px rgba(0,0,0,0.2); cursor: grab;
+        }
+        canvas.dragging { cursor: grabbing; }
+        #controls { margin-top: 15px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; justify-items: center; }
+        button { padding: 10px 0; font-size: 0.9em; cursor: pointer; border: none; border-radius: 5px; background-color: #8e44ad; color: white; transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease; width: 110px; box-shadow: 0 3px 5px rgba(0,0,0,0.2); text-align: center; }
+        #bakeBtn { grid-column: 1 / 2; }
+        #startOrderBtn { grid-column: 3 / 4; }
+        hr { display: none; }
+        button:hover:enabled { background-color: #7e349d; box-shadow: 0 5px 10px rgba(0,0,0,0.25); transform: translateY(-1px); }
+        button:active:enabled { transform: translateY(0px); box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        button:disabled { background-color: #777; cursor: not-allowed; opacity: 0.6; box-shadow: none; transform: none; }
+
+        #status { margin-top: 12px; font-weight: 600; color: #f5f5f5; min-height: 3.5em; font-size: 1.0em; line-height: 1.4; background-color: rgba(106, 95, 126, 0.8); padding: 10px; border-radius: 4px; text-align: left; border: 1px solid #7a6f8e; }
+        #order-status { margin-top: auto; font-weight: bold; font-size: 1.05em; /* Slightly smaller if needed */ padding: 12px; border: 1px solid transparent; border-radius: 5px; min-height: 5em; /* Even taller for error lists */ line-height: 1.4; word-wrap: break-word; color: #212121; text-align: left; } /* Align error list left */
+        #order-status ul { padding-left: 20px; margin-top: 5px; font-size: 0.9em; font-weight: normal;} /* Style for error list */
+        #order-status.perfect { background-color: #e1f5fe; border-color: #b3e5fc; color: #01579b; }
+        #order-status.success { background-color: #fff9c4; border-color: #fff59d; color: #f57f17; }
+        #order-status.error-mild { background-color: #ffecb3; border-color: #ffe082; color: #ff8f00; }
+        #order-status.error-medium { background-color: #ffccbc; border-color: #ffab91; color: #d84315; }
+        #order-status.error-severe { background-color: #ffcdd2; border-color: #ef9a9a; color: #c62828; }
+
+        .topping-btn { background-color: #f39c12; color: #fff;} .topping-btn.bacon { background-color: #e74c3c; } .topping-btn.onion { background-color: #ecf0f1; color: #333;}
+        .topping-btn:hover:enabled { background-color: #e67e22; } .topping-btn.bacon:hover:enabled { background-color: #c0392b; } .topping-btn.onion:hover:enabled { background-color: #bdc3c7; }
+        .action-btn { background-color: #2ecc71; } .action-btn.baking { background-color: #e74c3c; } .action-btn:hover:enabled { background-color: #27ae60; } .action-btn.baking:hover:enabled { background-color: #c0392b; }
+        .start-btn { background-color: #3498db; } .start-btn:hover:enabled { background-color: #2980b9; }
+        #order-display, #timer-display, #score-display { margin-bottom: 15px; padding: 10px; background-color: rgba(106, 95, 126, 0.8); border-radius: 5px; border: 1px solid #7a6f8e; text-align: left; color: #e0e0e0; }
+        #order-display h3, #timer-display h3, #score-display h3 { margin: 0 0 8px 0; font-size: 1em; color: #fff; border-bottom: 1px solid #9a8fae; padding-bottom: 5px; text-align: center; }
+        #order-list { list-style: none; padding: 0; margin: 0; } #order-list li { margin-bottom: 4px; font-size: 0.95em; }
+        .order-instruction { font-weight: bold; color: #f1c40f; } .topping-location { font-style: italic; color: #bdc3c7; margin-left: 5px; }
+        #timerValue { font-size: 1.3em; font-weight: bold; color: #e74c3c; } #scoreValue { font-size: 1.3em; font-weight: bold; color: #3498db; }
+
+    </style>
+</head>
+<body>
+
+<div id="oven-view"> <!-- NEW WRAPPER -->
+    <div id="game-container">
+        <div id="pizza-area">
+            <h1>Pizza Hell's Kitchen</h1>
+            <canvas id="pizzaCanvas" width="400" height="400"></canvas>
+            <div id="status">Click "Start New Order". Your torture begins now.</div>
+            <div id="controls">
+                 <!-- Controls remain the same -->
+                 <button id="addDoughBtn" disabled>Add Dough</button> <button id="addSauceBtn" disabled>Add Sauce</button> <button id="addCheeseBtn" disabled>Add Cheese</button>
+                 <button id="addPepperoniBtn" class="topping-btn" disabled>Pepperoni</button> <button id="addMushroomBtn" class="topping-btn" disabled>Mushrooms</button> <button id="addOliveBtn" class="topping-btn" disabled>Olives</button>
+                 <button id="addPeppersBtn" class="topping-btn" disabled>Peppers</button> <button id="addBaconBtn" class="topping-btn bacon" disabled>Bacon</button> <button id="addOnionBtn" class="topping-btn onion" disabled>Onion</button>
+                 <button id="bakeBtn" class="action-btn" disabled>Bake & Serve</button> <span></span> <button id="startOrderBtn" class="start-btn">Start New Order</button>
+            </div>
+        </div>
+
+        <div id="info-area">
+            <div id="order-display">
+                <h3>Soul Crushing Demands:</h3>
+                <ul id="order-list">
+                    <li>Waiting for your next catastrophe...</li>
+                </ul>
+            </div>
+            <div id="timer-display">
+                <h3>Time Wasted:</h3>
+                <span id="timerValue">--</span> seconds
+            </div>
+             <div id="score-display">
+                <h3>Failure Count (aka Score):</h3>
+                <span id="scoreValue">0</span>
+            </div>
+            <div id="order-status"></div>
+        </div>
+    </div>
+</div> <!-- END OVEN VIEW -->
+
+<script>
+    // Constants and variables setup (mostly same)
+    const ovenView = document.getElementById('oven-view'); // Get oven view element
+    const canvas = document.getElementById('pizzaCanvas'); /* ... */ const ctx = canvas.getContext('2d'); /* ... */ const statusDiv = document.getElementById('status'); /* ... */ const orderStatusDiv = document.getElementById('order-status'); /* ... */ const orderList = document.getElementById('order-list'); /* ... */ const timerValueSpan = document.getElementById('timerValue'); /* ... */ const scoreValueSpan = document.getElementById('scoreValue'); /* ... */ const buttons = { addDoughBtn: document.getElementById('addDoughBtn'), addSauceBtn: document.getElementById('addSauceBtn'), addCheeseBtn: document.getElementById('addCheeseBtn'), addPepperoniBtn: document.getElementById('addPepperoniBtn'), addMushroomBtn: document.getElementById('addMushroomBtn'), addOliveBtn: document.getElementById('addOliveBtn'), addPeppersBtn: document.getElementById('addPeppersBtn'), addBaconBtn: document.getElementById('addBaconBtn'), addOnionBtn: document.getElementById('addOnionBtn'), bakeBtn: document.getElementById('bakeBtn'), startOrderBtn: document.getElementById('startOrderBtn') };
+    const centerX = canvas.width / 2; const centerY = canvas.height / 2; const baseRadius = 150;
+    const MAX_TOTAL_TOPPINGS = 45; const MIN_TOPPINGS_PER_TYPE = 2; const MAX_TOPPINGS_PER_TYPE = 12;
+    const CLICK_REMOVE_RADIUS_SQ = 20*20; const DRAG_GRAB_RADIUS_SQ = 15*15;
+    const BAKE_TIME_TOLERANCE = 750; const PERFECT_BAKE_TIME_TOLERANCE = 350;
+
+    const GameState = { IDLE: 'IDLE', ORDER_ACTIVE: 'ORDER_ACTIVE', BAKING: 'BAKING', DRAGGING: 'DRAGGING', FINISHED: 'FINISHED' };
+    let gameState = GameState.IDLE; let pizzaState = null; let currentOrder = null; let timerId = null; let timeLeft = 0; let score = 0; let bakeStartTime = 0; let actualBakeTime = 0; let animationFrameId = null; let bakingEffects = { bubbles: [], steam: [] };
+    let isDragging = false; let draggedToppingIndex = -1; let dragOffsetX = 0; let dragOffsetY = 0; let dragJustStarted = false;
+
+    // Colors (same)
+    const colors = { dough: '#EED8AE', bakedDough: '#C6A77A', crust: '#D2B48C', bakedCrust: '#A07C54', sauce: '#B22222', bakedSauce: '#800000', cheese: '#FFFACD', bakedCheese: '#D2B48C', pepperoni: '#C83232', bakedPepperoni: '#8B2323', pepperoniEdge: '#A02828', bakedPepperoniEdge: '#641C1C', mushroomStem: '#D2B48C', bakedMushroomStem: '#A08464', mushroomCap: '#A0522D', bakedMushroomCap: '#6A361E', olive: '#303030', bakedOlive: '#181818', oliveHoleBase: '#FFFACD', oliveHoleBaked: '#D2B48C', greenPepper: '#2E8B57', bakedGreenPepper: '#1A4D31', baconStrip: '#DDA0DD', bakedBaconStrip: '#B886B8', baconFat: '#FFF8DC', bakedBaconFat: '#EDE0C0', onionRing: '#E6E6FA', bakedOnionRing: '#D8BFD8', plate: '#E0E0E0', bubble: 'rgba(255, 255, 255, 0.8)', steam: 'rgba(220, 220, 220, 0.4)' };
+
+    // Customer Feedback (Severity Based - same insults)
+    const perfectFeedback = [ "Hmph. Acceptable. Barely.", "Fine. It's edible. Don't expect a tip.", "Took you long enough. It's correct, I guess.", "Against all odds, you didn't fail completely."];
+    const acceptableFeedback = [ "Close enough, I suppose. Don't get cocky.", "The bake time is sloppy, but the rest is... passable.", "Marginally better than raw dough. Marginally.", "I've had worse. Probably."];
+    const mildInsults = [ "Are you visually impaired?!", "A minor error, pathetic.", "Were you dropped on your head?!", "Try harder, useless!" ];
+    const mediumInsults = [ "Did you even READ the ticket?!", "Is basic counting beyond you?!", "This is an insult! Remake it!", "My disappointment grows." ];
+    const severeInsults = [ "Absolutely PATHETIC!", "This is GARBAGE!", "Incompetent BUFFOON!", "Just... burn it.", "I wouldn't feed this SLOP to rats!" ];
+
+    // --- Drawing Functions --- (Unchanged)
+    function lerpColor(colorA, colorB, amount) { /* ... */ const ah = parseInt(colorA.replace(/#/g, ''), 16), ar = ah >> 16, ag = (ah >> 8) & 0xff, ab = ah & 0xff; const bh = parseInt(colorB.replace(/#/g, ''), 16), br = bh >> 16, bg = (bh >> 8) & 0xff, bb = bh & 0xff; const rr = Math.round(ar + amount * (br - ar)); const rg = Math.round(ag + amount * (bg - ag)); const rb = Math.round(ab + amount * (bb - ab)); const clamp = (val) => Math.max(0, Math.min(255, val)); return `#${((1 << 24) + (clamp(rr) << 16) + (clamp(rg) << 8) + clamp(rb)).toString(16).slice(1).padStart(6, '0')}`; }
+    function getColor(baseColorKey, bakedColorKey, bakeProgress = 1.0) { /* ... */ const isBakedOrBaking = pizzaState?.isBaked || gameState === GameState.BAKING; const effectiveProgress = !isBakedOrBaking ? 0 : (pizzaState.isBaked ? (actualBakeTime / currentOrder?.bakeDuration || 1.0) : Math.min(bakeProgress, 1.5)); let baseColor = colors[baseColorKey]; let targetColor = colors[bakedColorKey]; const isTopping = ['pepperoni','mushroom','olive','greenPepper','bacon','onion'].some(t => baseColorKey.toLowerCase().includes(t)); if (isTopping && effectiveProgress > 0) { const evenDarkerTarget = lerpColor(targetColor, '#050505', 0.5); const darkBlendAmount = Math.max(0, (effectiveProgress - 1.0) * 2); targetColor = lerpColor(targetColor, evenDarkerTarget, darkBlendAmount); } return lerpColor(baseColor, targetColor, Math.min(effectiveProgress, 1.0)); }
+    function drawDough(bakeProgress = 1.0) { /* ... */ ctx.beginPath(); ctx.arc(centerX, centerY, baseRadius, 0, Math.PI*2); ctx.fillStyle = getColor('dough', 'bakedDough', bakeProgress); ctx.fill(); ctx.strokeStyle = getColor('crust', 'bakedCrust', bakeProgress); ctx.lineWidth = 10; ctx.stroke(); }
+    function drawSauce(bakeProgress = 1.0) { /* ... */ ctx.beginPath(); ctx.arc(centerX, centerY, baseRadius - 15, 0, Math.PI*2); ctx.fillStyle = getColor('sauce', 'bakedSauce', bakeProgress); ctx.fill(); }
+    function drawCheese(bakeProgress = 1.0) { /* ... */ ctx.beginPath(); ctx.arc(centerX, centerY, baseRadius - 25, 0, Math.PI*2); ctx.fillStyle = getColor('cheese', 'bakedCheese', bakeProgress); ctx.fill(); }
+    function drawPepperoni(x, y, bp=1.0, j={x:0,y:0}) { /* ... */ ctx.beginPath(); ctx.arc(x+j.x, y+j.y, 15, 0, Math.PI*2); ctx.fillStyle = getColor('pepperoni', 'bakedPepperoni', bp); ctx.fill(); ctx.strokeStyle = getColor('pepperoniEdge', 'bakedPepperoniEdge', bp); ctx.lineWidth = 1; ctx.stroke(); }
+    function drawMushroom(x, y, bp=1.0, j={x:0,y:0}) { /* ... */ const dX=x+j.x, dY=y+j.y; ctx.fillStyle=getColor('mushroomStem','bakedMushroomStem',bp); ctx.fillRect(dX-5,dY,10,12); ctx.fillStyle=getColor('mushroomCap','bakedMushroomCap',bp); ctx.beginPath(); ctx.arc(dX,dY,12,Math.PI,0); ctx.closePath(); ctx.fill(); }
+    function drawOlive(x, y, bp=1.0, j={x:0,y:0}) { /* ... */ const dX=x+j.x, dY=y+j.y; ctx.beginPath(); ctx.arc(dX,dY,10,0,Math.PI*2); ctx.fillStyle=getColor('olive','bakedOlive',bp); ctx.fill(); ctx.beginPath(); ctx.arc(dX,dY,5,0,Math.PI*2); let hCB=pizzaState.hasCheese?'cheese':(pizzaState.hasSauce?'sauce':'dough'); let hCBk=pizzaState.hasCheese?'bakedCheese':(pizzaState.hasSauce?'bakedSauce':'bakedDough'); ctx.fillStyle=getColor(hCB,hCBk,bp); ctx.fill(); }
+    function drawGreenPepper(x, y, bp=1.0, j={x:0,y:0}) { /* ... */ const dX=x+j.x, dY=y+j.y; ctx.beginPath(); ctx.moveTo(dX-15,dY); ctx.quadraticCurveTo(dX,dY-10,dX+15,dY); ctx.lineTo(dX+10,dY+8); ctx.quadraticCurveTo(dX,dY+12,dX-10,dY+8); ctx.closePath(); ctx.fillStyle=getColor('greenPepper','bakedGreenPepper',bp); ctx.fill(); }
+    function drawBacon(x, y, bp=1.0, j={x:0,y:0}) { /* ... */ const dX=x+j.x, dY=y+j.y; const angle=Math.atan2(dY-centerY,dX-centerX)+Math.PI/2; ctx.save(); ctx.translate(dX,dY); ctx.rotate(angle+(Math.random()-0.5)*0.2); const length=25, width=8; ctx.fillStyle=getColor('baconFat','bakedBaconFat',bp); ctx.fillRect(-length/2, -width/2, length, width); ctx.fillStyle=getColor('baconStrip','bakedBaconStrip',bp); ctx.fillRect(-length/2, -width/2, length, width/3); ctx.fillRect(-length/2, width/6, length, width/3); ctx.restore(); }
+    function drawOnion(x, y, bp=1.0, j={x:0,y:0}) { /* ... */ const dX=x+j.x, dY=y+j.y; const outerRadius=12; ctx.strokeStyle=getColor('onionRing','bakedOnionRing',bp); ctx.lineWidth=3; ctx.beginPath(); ctx.arc(dX,dY,outerRadius,0,Math.PI*2); ctx.stroke(); }
+    function drawBakingEffects(bakeProgress) { /* ... */ if(Math.random()<0.5){const bR=Math.random()*6+5; const a=Math.random()*Math.PI*2; const r=(baseRadius-15)*Math.sqrt(Math.random()); const x=centerX+r*Math.cos(a); const y=centerY+r*Math.sin(a); bakingEffects.bubbles.push({x,y,radius:0,maxRadius:bR,alpha:0.9,life:1.0,growSpeed:0.25+Math.random()*0.3,shrinkSpeed:0.09+Math.random()*0.06});} ctx.fillStyle=colors.bubble; for(let i=bakingEffects.bubbles.length-1; i>=0; i--){const b=bakingEffects.bubbles[i]; b.life-=b.shrinkSpeed; b.alpha=0.9*Math.sin(b.life*Math.PI); if(b.radius<b.maxRadius)b.radius+=(b.maxRadius-b.radius)*b.growSpeed; if(b.life<=0||b.alpha<=0)bakingEffects.bubbles.splice(i,1); else{ctx.globalAlpha=b.alpha*Math.max(0,1-bakeProgress*0.6); ctx.beginPath(); ctx.arc(b.x,b.y,Math.max(0,b.radius),0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1.0;}} if(Math.random()<0.6){const x=centerX+(Math.random()-0.5)*baseRadius*1.6; const y=centerY-baseRadius*0.7+(Math.random()*baseRadius*0.6); bakingEffects.steam.push({x,y,life:1.0,speedY:1.5+Math.random()*2.0,alpha:0.7});} ctx.strokeStyle=colors.steam; ctx.lineWidth=2; for(let i=bakingEffects.steam.length-1; i>=0; i--){const s=bakingEffects.steam[i]; s.y-=s.speedY; s.life-=0.018; s.alpha=0.7*s.life; if(s.life<=0||s.alpha<=0)bakingEffects.steam.splice(i,1); else{ctx.globalAlpha=s.alpha*Math.min(1,bakeProgress*1.5); ctx.beginPath(); ctx.moveTo(s.x,s.y); ctx.lineTo(s.x,s.y-12); ctx.stroke(); ctx.globalAlpha=1.0;}} }
+    function redrawPizza() { /* ... */ ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.fillStyle=colors.plate; ctx.beginPath(); ctx.arc(centerX, centerY, baseRadius+20, 0, Math.PI*2); ctx.fill(); if (!pizzaState || !currentOrder) return; let currentBakeProgress = 0; if(gameState === GameState.BAKING) currentBakeProgress = (performance.now() - bakeStartTime) / currentOrder.bakeDuration; else if(pizzaState.isBaked) currentBakeProgress = actualBakeTime / currentOrder.bakeDuration; currentBakeProgress = Math.min(currentBakeProgress, 1.5); if(pizzaState.hasDough) drawDough(currentBakeProgress); if(pizzaState.hasSauce) drawSauce(currentBakeProgress); if(pizzaState.hasCheese) drawCheese(currentBakeProgress); const isBakingNow = gameState === GameState.BAKING; pizzaState.toppingPositions.forEach((topping, index) => { let jiggle={x:0,y:0}; if(isBakingNow && currentBakeProgress>0.1 && Math.random()<0.6){jiggle.x=(Math.random()-0.5)*2.5; jiggle.y=(Math.random()-0.5)*2.5;} const isBeingDragged=isDragging&&index===draggedToppingIndex; if(isBeingDragged){ctx.fillStyle='rgba(255,255,0,0.3)'; ctx.beginPath(); ctx.arc(topping.x,topping.y,25,0,Math.PI*2); ctx.fill();} switch(topping.type){ case 'pepperoni': drawPepperoni(topping.x, topping.y, currentBakeProgress, jiggle); break; case 'mushroom': drawMushroom(topping.x, topping.y, currentBakeProgress, jiggle); break; case 'olive': drawOlive(topping.x, topping.y, currentBakeProgress, jiggle); break; case 'pepper': drawGreenPepper(topping.x, topping.y, currentBakeProgress, jiggle); break; case 'bacon': drawBacon(topping.x, topping.y, currentBakeProgress, jiggle); break; case 'onion': drawOnion(topping.x, topping.y, currentBakeProgress, jiggle); break; } }); if(isBakingNow){ drawBakingEffects(currentBakeProgress); } }
+
+    // --- Game Logic ---
+    function resetPizzaState() { pizzaState = { hasDough: false, hasSauce: false, hasCheese: false, toppingCounts: { pepperoni: 0, mushroom: 0, olive: 0, pepper: 0, bacon: 0, onion: 0 }, toppingPositions: [], isBaked: false }; bakingEffects = { bubbles: [], steam: [] }; actualBakeTime = 0; }
+    function updateButtonStates() { /* ... */ const isOrderActive=gameState===GameState.ORDER_ACTIVE; const isBaking=gameState===GameState.BAKING; const doughExists=pizzaState?.hasDough; buttons.addDoughBtn.disabled=doughExists||!(isOrderActive||isBaking); const baseEnabled=doughExists&&(isOrderActive||isBaking); buttons.addSauceBtn.disabled=!baseEnabled; buttons.addCheeseBtn.disabled=!baseEnabled; buttons.addPepperoniBtn.disabled=!baseEnabled; buttons.addMushroomBtn.disabled=!baseEnabled; buttons.addOliveBtn.disabled=!baseEnabled; buttons.addPeppersBtn.disabled=!baseEnabled; buttons.addBaconBtn.disabled=!baseEnabled; buttons.addOnionBtn.disabled=!baseEnabled; buttons.bakeBtn.disabled=!doughExists||!(isOrderActive||isBaking); buttons.startOrderBtn.disabled=isOrderActive||isBaking; buttons.bakeBtn.textContent=isBaking?"Stop Baking!":"Bake & Serve"; buttons.bakeBtn.classList.toggle('baking',isBaking); }
+    function updateStatus(message) { /* ... */ let statusText = message; if ((gameState === GameState.ORDER_ACTIVE || gameState === GameState.DRAGGING) && currentOrder && pizzaState.hasDough) { let countsText = "<br><small><u>Your Abomination:</u> "; let needsComma = false; const types = ['pepperoni','mushroom','olive','pepper','bacon','onion']; types.forEach(type => { if (pizzaState.toppingCounts[type] > 0) { if (needsComma) countsText += ", "; const required = currentOrder.toppings[type]?.count || 0; countsText += `${type} (${pizzaState.toppingCounts[type]}`; if (required > 0) countsText += ` / ${required} needed)`; else countsText += ` / 0 needed)`; needsComma = true; } }); countsText += "</small>"; if (needsComma) statusText += countsText; } if (gameState === GameState.BAKING) { const elapsed = performance.now() - bakeStartTime; const target = currentOrder.bakeDuration; statusText = `BAKING! Click to STOP! ${(elapsed / 1000).toFixed(1)}s / ${(target / 1000).toFixed(1)}s target`; } statusDiv.innerHTML = statusText; }
+
+    function updateOrderStatus(message, details = "", statusType = "error-severe") { // Renamed feedback to details
+        orderStatusDiv.className = 'order-status ' + statusType;
+        let content = message;
+        if (details && typeof details === 'string') { // Simple feedback string
+             content += ` Customer Says: "${details}"`;
+        } else if (details && Array.isArray(details) && details.length > 0) { // List of errors
+             content += " Customer Noticed Your Failures:<ul>";
+             details.forEach(error => content += `<li>${error}</li>`);
+             content += "</ul>";
+        } else if (!message && !details) {
+            orderStatusDiv.className = 'order-status'; // Clear if empty
+        }
+        orderStatusDiv.innerHTML = content; // Use innerHTML for the list
+    }
+
+    function getRandomToppingPosition() { /* ... */ const a=Math.random()*Math.PI*2; const r=Math.random()*30; return {x:centerX+r*Math.cos(a), y:centerY+r*Math.sin(a)}; }
+    function generateOrder() { /* ... */ const possT = ['pepperoni','mushroom','olive','pepper','bacon','onion']; const orderT = {}; let totalT = 0; const nTypes = Math.floor(Math.random()*(possT.length-1))+1; const availT = [...possT]; const chosenT = []; for(let i=0; i<nTypes; i++){ const rI=Math.floor(Math.random()*availT.length); chosenT.push(availT.splice(rI,1)[0]); } const locs = ['any','left','right','top','bottom']; chosenT.forEach(t => { const c = Math.floor(Math.random()*(MAX_TOPPINGS_PER_TYPE-MIN_TOPPINGS_PER_TYPE+1))+MIN_TOPPINGS_PER_TYPE; if(totalT+c <= MAX_TOTAL_TOPPINGS){ let l='any'; if(Math.random()<0.7) l=locs[Math.floor(Math.random()*locs.length)]; orderT[t]={count:c, location:l}; totalT+=c; } }); const wantsS=Math.random()<0.8; const wantsC=wantsS?Math.random()<0.9:Math.random()<0.5; const bakeD=(Math.floor(Math.random()*6)+4)*1000; if(!wantsS&&!wantsC&&totalT===0) return generateOrder(); return {sauce:wantsS, cheese:wantsC, toppings:orderT, totalToppingClicks:totalT, bakeDuration:bakeD}; }
+    function displayOrder(order) { /* ... */ orderList.innerHTML=''; const addLi=(txt,instr=false,locInfo="")=>{const li=document.createElement('li'); let content=instr?`<span class="order-instruction">${txt}</span>`:txt; if(locInfo) content+=` <span class="topping-location">[${locInfo.toUpperCase()}${locInfo!=='any'?' SIDE':''}]</span>`; li.innerHTML=content; orderList.appendChild(li);}; addLi(`- Dough Base`); addLi(order.sauce?'- Tomato Sauce':'- NO SAUCE!'); addLi(order.cheese?'- Cheese':'- NO CHEESE!'); const sortedT=Object.keys(order.toppings).sort(); if(sortedT.length>0){orderList.appendChild(document.createElement('hr')); sortedT.forEach(tT=>{const d=order.toppings[tT]; if(d.count>0){const tN=tT.charAt(0).toUpperCase()+tT.slice(1); addLi(`- ${tN} (x${d.count})`,false,d.location);}}); }else{addLi("- No Toppings.");} orderList.appendChild(document.createElement('hr')); addLi(`BAKE FOR EXACTLY ${order.bakeDuration/1000} SECONDS! (TOGGLE BUTTON)`,true); }
+    function startTimer(duration) { /* ... */ stopTimer(); timeLeft = duration; timerValueSpan.textContent = timeLeft; timerId = setInterval(() => { timeLeft--; timerValueSpan.textContent = timeLeft; if (timeLeft <= 0) { stopTimer(); handleOrderFail(["Ran out of time, useless!"], 100); } }, 1000); } // Pass error as list
+    function stopTimer() { /* ... */ clearInterval(timerId); timerId = null; }
+    function isToppingInRegion(toppingPos, region) { /* ... */ switch(region){ case 'left': return toppingPos.x<centerX; case 'right': return toppingPos.x>=centerX; case 'top': return toppingPos.y<centerY; case 'bottom': return toppingPos.y>=centerY; case 'any': default: return true; } }
+
+    function checkOrderMatch() {
+        let errorScore = 0;
+        const errorList = []; // Store specific error messages
+        let isPerfect = true;
+        let isAcceptable = true;
+
+        // 1. Bake Time Check
+        const timeDiff = Math.abs(actualBakeTime - currentOrder.bakeDuration);
+        const bakeTimeTarget = (currentOrder.bakeDuration / 1000).toFixed(1);
+        const bakeTimeActual = (actualBakeTime / 1000).toFixed(1);
+        if (timeDiff > PERFECT_BAKE_TIME_TOLERANCE) {
+            isPerfect = false;
+            if (timeDiff > BAKE_TIME_TOLERANCE) {
+                isAcceptable = false;
+                errorList.push(`Bake Time Wrong! (Needed ${bakeTimeTarget}s, Got ${bakeTimeActual}s)`);
+                errorScore += Math.min(10, Math.round((timeDiff / currentOrder.bakeDuration) * 20));
+            } else {
+                // Not perfect, but acceptable bake time
+                 errorList.push(`Bake time slightly off (Needed ${bakeTimeTarget}s, Got ${bakeTimeActual}s)`);
+                 // No error score added here, just affects feedback category
+            }
+        }
+
+        // 2. Base Layers Check
+        if (pizzaState.hasSauce !== currentOrder.sauce) {
+            errorList.push(currentOrder.sauce ? "Missing Sauce!" : "Wrongly added Sauce!");
+            errorScore += 5; isPerfect = false; isAcceptable = false;
+        }
+        if (pizzaState.hasCheese !== currentOrder.cheese) {
+            errorList.push(currentOrder.cheese ? "Missing Cheese!" : "Wrongly added Cheese!");
+            errorScore += 5; isPerfect = false; isAcceptable = false;
+        }
+
+        // 3. Topping Counts and Location Check
+        const allToppingTypes = new Set([...Object.keys(currentOrder.toppings), 'pepperoni', 'mushroom', 'olive', 'pepper', 'bacon', 'onion']); // Ensure all possible types are checked
+        for (const type of allToppingTypes) {
+            const requiredDetails = currentOrder.toppings[type];
+            const requiredCount = requiredDetails?.count || 0;
+            const requiredLocation = requiredDetails?.location || 'any';
+            const addedCount = pizzaState.toppingCounts[type] || 0;
+            const typeName = type.charAt(0).toUpperCase() + type.slice(1);
+
+            // Check Count
+            if (requiredCount !== addedCount) {
+                 errorList.push(`${typeName} Count Wrong! (Needed ${requiredCount}, Have ${addedCount})`);
+                 errorScore += Math.abs(requiredCount - addedCount);
+                 isPerfect = false; isAcceptable = false;
+                 continue; // Don't check location if count is wrong
+            }
+
+            // Check Location (only if count is correct > 0 and specific location required)
+            if (requiredCount > 0 && requiredLocation !== 'any') {
+                let locationMismatchFound = false;
+                pizzaState.toppingPositions.forEach(toppingPos => {
+                     if (toppingPos.type === type && !isToppingInRegion(toppingPos, requiredLocation)) {
+                         locationMismatchFound = true;
+                     }
+                 });
+                if (locationMismatchFound) {
+                    errorList.push(`${typeName} Location Wrong! (Should be ${requiredLocation.toUpperCase()})`);
+                    errorScore += 5;
+                    isPerfect = false; isAcceptable = false;
+                }
+            }
+        }
+
+        console.log("Order Check Complete. Errors:", errorList, "Error Score:", errorScore);
+
+        if (errorList.length === 0) { // Absolutely no errors
+             handleOrderSuccess(true); // Perfect
+        } else if (isAcceptable && errorList.length === 1 && errorList[0].includes("Bake time slightly off")) {
+             // Only error is the minor bake time deviation
+             handleOrderSuccess(false); // Acceptable
+        } else { // Any other errors exist
+             handleOrderFail(errorList, errorScore);
+        }
+    }
+
+     function handleOrderSuccess(perfect = false) {
+        stopTimer();
+        if (animationFrameId) cancelAnimationFrame(animationFrameId); animationFrameId = null;
+        pizzaState.isBaked = true; redrawPizza();
+        ovenView.classList.remove('oven-active'); // Turn off oven effect
+
+        const feedback = perfect ? perfectFeedback[Math.floor(Math.random() * perfectFeedback.length)] : acceptableFeedback[Math.floor(Math.random() * acceptableFeedback.length)];
+        const message = perfect ? "PERFECT! I'm speechless." : "Order Acceptable.";
+        // Pass string feedback for success cases
+        updateOrderStatus(message, feedback, perfect ? "perfect" : "success");
+
+        score++; scoreValueSpan.textContent = score; gameState = GameState.FINISHED; updateButtonStates();
+        setTimeout(()=>{ updateStatus("Another victim awaits. Start New Order!"); buttons.startOrderBtn.disabled = false; }, 2500);
+    }
+
+    function handleOrderFail(errorList, errorScore) { // Receive list of errors
+        stopTimer();
+        if (animationFrameId) cancelAnimationFrame(animationFrameId); animationFrameId = null;
+        pizzaState.isBaked = true; redrawPizza();
+        ovenView.classList.remove('oven-active'); // Turn off oven effect
+
+        let insult;
+        let statusType;
+        // Determine insult severity based on score
+        if (errorScore <= 3) { insult = mildInsults[Math.floor(Math.random() * mildInsults.length)]; statusType = "error-mild"; }
+        else if (errorScore <= 8) { insult = mediumInsults[Math.floor(Math.random() * mediumInsults.length)]; statusType = "error-medium"; }
+        else { insult = severeInsults[Math.floor(Math.random() * severeInsults.length)]; statusType = "error-severe"; }
+
+        // Pass the list of specific errors
+        updateOrderStatus(`Order FAILED! ${insult}`, errorList, statusType);
+
+        gameState = GameState.FINISHED; updateButtonStates();
+        setTimeout(()=>{ updateStatus("Maybe try cleaning toilets instead? Start New Order!"); buttons.startOrderBtn.disabled = false; }, 3500); // Longer pause for reading errors
+    }
+
+    function bakeAnimationLoop(timestamp) { /* ... same ... */ if (gameState !== GameState.BAKING) return; if (!bakeStartTime) bakeStartTime = timestamp; const elapsed = timestamp - bakeStartTime; const targetDuration = currentOrder.bakeDuration; const visualProgress = elapsed / targetDuration; redrawPizza(); updateStatus(""); animationFrameId = requestAnimationFrame(bakeAnimationLoop); }
+
+    // --- Event Listeners ---
+    buttons.startOrderBtn.addEventListener('click', () => { /* ... */ resetPizzaState(); currentOrder = generateOrder(); displayOrder(currentOrder); updateStatus("Make the pizza EXACTLY. I have NO patience!"); updateOrderStatus("", "", ""); gameState = GameState.ORDER_ACTIVE; redrawPizza(); const timePerClick = 1.3; const baseTime = 45; startTimer(Math.ceil(baseTime + currentOrder.totalToppingClicks * timePerClick + Object.keys(currentOrder.toppings).length * 6 + (currentOrder.bakeDuration / 1000 * 1.5))); updateButtonStates(); canvas.style.cursor = 'grab'; ovenView.classList.remove('oven-active'); });
+    buttons.addDoughBtn.addEventListener('click', () => { /* ... */ if(gameState === GameState.ORDER_ACTIVE && !pizzaState.hasDough){pizzaState.hasDough = true; updateStatus('Dough added. Don\'t screw up the rest.'); redrawPizza(); updateButtonStates();} });
+    buttons.addSauceBtn.addEventListener('click', () => { /* ... */ if((gameState === GameState.ORDER_ACTIVE || gameState === GameState.DRAGGING) && pizzaState.hasDough && !pizzaState.hasSauce){pizzaState.hasSauce = true; updateStatus('Sauce... if you were meant to.'); redrawPizza(); updateButtonStates();} });
+    buttons.addCheeseBtn.addEventListener('click', () => { /* ... */ if((gameState === GameState.ORDER_ACTIVE || gameState === GameState.DRAGGING) && pizzaState.hasDough && !pizzaState.hasCheese){pizzaState.hasCheese = true; updateStatus('Cheese. Let\'s see if you can count.'); redrawPizza(); updateButtonStates();} });
+    function addTopping(type) { /* ... */ if((gameState === GameState.ORDER_ACTIVE || gameState === GameState.DRAGGING) && pizzaState.hasDough){ const pos = getRandomToppingPosition(); pizzaState.toppingPositions.push({type: type, x: pos.x, y: pos.y }); pizzaState.toppingCounts[type]++; updateStatus(`Added ${type}. DRAG IT TO THE RIGHT PLACE!`); redrawPizza(); updateButtonStates();} }
+    buttons.addPepperoniBtn.addEventListener('click', () => addTopping('pepperoni')); buttons.addMushroomBtn.addEventListener('click', () => addTopping('mushroom')); buttons.addOliveBtn.addEventListener('click', () => addTopping('olive')); buttons.addPeppersBtn.addEventListener('click', () => addTopping('pepper')); buttons.addBaconBtn.addEventListener('click', () => addTopping('bacon')); buttons.addOnionBtn.addEventListener('click', () => addTopping('onion'));
+
+    // --- Bake Button (Toggle Interaction) ---
+    buttons.bakeBtn.addEventListener('click', (e) => {
+        if (gameState === GameState.ORDER_ACTIVE && pizzaState.hasDough) {
+            // Start Baking
+            gameState = GameState.BAKING;
+            bakeStartTime = performance.now(); actualBakeTime = 0;
+            updateButtonStates(); // Update text/class
+            ovenView.classList.add('oven-active'); // Activate oven effect
+            bakingEffects = { bubbles: [], steam: [] };
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            animationFrameId = requestAnimationFrame(bakeAnimationLoop);
+        } else if (gameState === GameState.BAKING) {
+            // Stop Baking
+            actualBakeTime = performance.now() - bakeStartTime;
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            animationFrameId = null;
+            pizzaState.isBaked = true;
+            bakingEffects = { bubbles: [], steam: [] };
+            gameState = GameState.FINISHED; // Go to finished state for checking
+             // Don't remove oven-active class immediately, let feedback show first
+             // updateButtonStates will disable bake button
+            updateButtonStates();
+            updateStatus("Checking your pathetic results...");
+            redrawPizza(); // Final draw
+            setTimeout(checkOrderMatch, 150); // Delay check
+        }
+    });
+
+    // --- Canvas Interactions (Click Remove / Drag - Unchanged) ---
+    canvas.addEventListener('mousedown', (e) => { if (gameState !== GameState.ORDER_ACTIVE || !pizzaState.hasDough || isDragging) return; const rect = canvas.getBoundingClientRect(); const mouseX = e.clientX - rect.left; const mouseY = e.clientY - rect.top; let clickedToppingIndex = -1; let minDistSq = DRAG_GRAB_RADIUS_SQ; for (let i = pizzaState.toppingPositions.length - 1; i >= 0; i--) { const topping = pizzaState.toppingPositions[i]; const dx = mouseX - topping.x; const dy = mouseY - topping.y; const distSq = dx*dx + dy*dy; if (distSq < minDistSq) { clickedToppingIndex = i; minDistSq = distSq; break; } } if (clickedToppingIndex !== -1) { isDragging = true; draggedToppingIndex = clickedToppingIndex; const draggedTopping = pizzaState.toppingPositions[draggedToppingIndex]; dragOffsetX = mouseX - draggedTopping.x; dragOffsetY = mouseY - draggedTopping.y; dragJustStarted = true; canvas.classList.add('dragging'); redrawPizza(); } });
+    canvas.addEventListener('mousemove', (e) => { if (!isDragging) return; dragJustStarted = false; const rect = canvas.getBoundingClientRect(); const mouseX = e.clientX - rect.left; const mouseY = e.clientY - rect.top; const draggedTopping = pizzaState.toppingPositions[draggedToppingIndex]; let newX = mouseX - dragOffsetX; let newY = mouseY - dragOffsetY; const angle = Math.atan2(newY - centerY, newX - centerX); const maxDragRadius = baseRadius - 10; const currentRadius = Math.sqrt((newX-centerX)**2 + (newY-centerY)**2); if (currentRadius > maxDragRadius) { newX = centerX + maxDragRadius * Math.cos(angle); newY = centerY + maxDragRadius * Math.sin(angle); } draggedTopping.x = newX; draggedTopping.y = newY; redrawPizza(); });
+    canvas.addEventListener('mouseup', (e) => { const wasDragging = isDragging; const wasJustStarted = dragJustStarted; if (isDragging) { isDragging = false; draggedToppingIndex = -1; canvas.classList.remove('dragging'); redrawPizza(); } if (!wasDragging || wasJustStarted) { handleCanvasClick(e); } dragJustStarted = false; });
+    function handleCanvasClick(event) { if (gameState !== GameState.ORDER_ACTIVE || !pizzaState.hasDough || isDragging) return; const rect = canvas.getBoundingClientRect(); const mouseX = event.clientX - rect.left; const mouseY = event.clientY - rect.top; let closestToppingIndex = -1; let minDistSq = CLICK_REMOVE_RADIUS_SQ; for (let i = pizzaState.toppingPositions.length - 1; i >= 0; i--) { const topping = pizzaState.toppingPositions[i]; const dx = mouseX - topping.x; const dy = mouseY - topping.y; const distSq = dx * dx + dy * dy; if (distSq < minDistSq) { closestToppingIndex = i; minDistSq = distSq; break; } } if (closestToppingIndex !== -1) { const removedTopping = pizzaState.toppingPositions.splice(closestToppingIndex, 1)[0]; pizzaState.toppingCounts[removedTopping.type]--; updateStatus(`Removed ${removedTopping.type}. Clumsy oaf.`); redrawPizza(); updateButtonStates(); } }
+    canvas.addEventListener('mouseleave', (e) => { if (isDragging) { isDragging = false; draggedToppingIndex = -1; canvas.classList.remove('dragging'); redrawPizza(); } dragJustStarted = false; });
+
+    // --- Initial Setup ---
+    function initializeGame() { /* ... */ resetPizzaState(); redrawPizza(); updateButtonStates(); timerValueSpan.textContent = '--'; scoreValueSpan.textContent = '0'; orderList.innerHTML = '<li>Waiting for orders you\'ll inevitably mess up...</li>'; updateStatus("Click 'Start New Order'. Try not to cry."); updateOrderStatus("", "", ""); canvas.style.cursor = 'grab'; ovenView.classList.remove('oven-active'); /* Ensure oven starts off */ }
+    initializeGame();
+
+</script>
+
+</body>
+</html>
